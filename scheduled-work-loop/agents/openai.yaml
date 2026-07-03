@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scheduled Work Loop"
+  short_description: "Create recurring Codex task/message loops"
+  default_prompt: "Use $scheduled-work-loop to turn this recurring check into the right scheduled workflow."

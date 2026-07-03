@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude Peer Review"
+  short_description: "Run Claude-only peer reviews through the unified runner"
+  default_prompt: "Use $claude-peer-review to run a Claude-only peer review of this repository."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChatGPT Pro Peer Review"
+  short_description: "Run ChatGPT GPT-5.5 Pro reviews through the browser"
+  default_prompt: "Use $chatgpt-pro-peer-review to run a ChatGPT GPT-5.5 Pro browser peer review of this repository."

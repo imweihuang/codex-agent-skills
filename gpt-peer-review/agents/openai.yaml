@@ -1,0 +1,4 @@
+interface:
+  display_name: "GPT Peer Review"
+  short_description: "Run GPT-only peer reviews through the unified runner"
+  default_prompt: "Use $gpt-peer-review to run a GPT-only peer review of this repository."
