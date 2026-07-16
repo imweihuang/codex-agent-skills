@@ -12,10 +12,17 @@ from datetime import datetime, timezone
 
 
 DEFAULTS = {
-    "claude": {"model": "opus", "effort": "xhigh"},
+    "claude": {
+        "model": "opus",
+        "effort": "high",
+        "reserved_model": "claude-fable-5",
+        "reserved_efforts": ("high", "xhigh"),
+        "fallback_model": None,
+        "fallback_effort": None,
+    },
     "codex": {"model": "gpt-5.5", "effort": "xhigh"},
     "gemini": {"model": "cli-default", "effort": "not-cli-exposed"},
-    "grok": {"model": "grok-composer-2.5-fast", "effort": "max; reasoning_effort=high"},
+    "grok": {"model": "grok-4.5", "effort": "reasoning_effort=high"},
 }
 
 
@@ -177,13 +184,16 @@ def collect_model_reports() -> list[ModelReport]:
 
 def claude_model_report() -> ModelReport:
     help_text = command_output(["claude", "--help"])
-    effort_ok = "xhigh" in help_text and "--effort" in help_text
-    model_ok = "opus" in help_text or "Opus" in help_text
-    status = "confirmed" if effort_ok and model_ok else "needs_manual_check"
+    effort_ok = all(value in help_text for value in ("--effort", "xhigh"))
+    model_ok = all(value in help_text for value in ("claude-fable-5", "opus"))
+    policy_flags_ok = all(
+        value in help_text for value in ("--tools", "--no-session-persistence", 'Use "" to disable all')
+    )
+    status = "confirmed" if effort_ok and model_ok and policy_flags_ok else "needs_manual_check"
     evidence = (
-        "`claude --help` exposes opus and --effort xhigh"
+        "`claude --help` confirms Opus/high for routine routing plus Fable 5 high/xhigh reserved routing, policy-critical flags, and empty --tools disable semantics"
         if status == "confirmed"
-        else "`claude --help` did not confirm opus with xhigh effort"
+        else "`claude --help` did not confirm all model, effort, and policy-critical tool/session controls"
     )
     return model_report("claude", "Claude", DEFAULTS["claude"]["model"], DEFAULTS["claude"]["effort"], status, evidence)
 
@@ -238,19 +248,22 @@ def grok_model_report() -> ModelReport:
     suggested_model = default_model
     if models and default_model not in models:
         suggested_model = next(iter(models))
-    effort_ok = "--effort" in help_text and "max" in help_text and "--reasoning-effort" in help_text
+    policy_flags_ok = all(
+        value in help_text
+        for value in ("--reasoning-effort", "--disable-web-search", "--tools", "--no-subagents", "--prompt-file")
+    )
     if "you are logged in" not in raw_models.lower():
         status = "auth_required"
         evidence = "`grok models` did not confirm login"
     elif suggested_model != default_model:
         status = "proposal"
         evidence = f"`grok models` lists {suggested_model}, not {default_model}"
-    elif effort_ok:
+    elif policy_flags_ok:
         status = "confirmed"
-        evidence = "`grok models` confirms model and `grok --help` exposes effort flags"
+        evidence = "`grok models` confirms model and `grok --help` exposes the policy-critical reasoning, web, tool, subagent, and prompt flags"
     else:
         status = "needs_manual_check"
-        evidence = "`grok --help` did not confirm expected effort flags"
+        evidence = "`grok --help` did not confirm all policy-critical reasoning, web, tool, subagent, and prompt flags"
     return ModelReport(
         "grok",
         "Grok Build",
@@ -380,7 +393,7 @@ def parse_grok_models(raw: str) -> set[str]:
     models: set[str] = set()
     for line in raw.splitlines():
         stripped = line.strip()
-        if stripped.startswith("* "):
+        if stripped.startswith(("* ", "- ")):
             models.add(stripped[2:].split()[0])
     return models
 

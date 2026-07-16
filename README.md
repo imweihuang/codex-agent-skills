@@ -11,7 +11,7 @@ delegation, and durable development workflows.
 Install one skill at a time from the folder URL:
 
 ```text
-Install the Codex skill from https://github.com/imweihuang/codex-agent-skills/tree/main/peer-review
+Install the Codex skill from https://github.com/imweihuang/agent-skills/tree/main/peer-review
 ```
 
 For manual installation:

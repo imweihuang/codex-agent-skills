@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -8,6 +10,7 @@ import threading
 import time
 import unittest
 from unittest import mock
+from contextlib import redirect_stdout
 from pathlib import Path
 
 
@@ -103,7 +106,81 @@ class ContextBuilderTests(unittest.TestCase):
 
 
 class RunnerTests(unittest.TestCase):
-    def test_planning_intensity_lowers_claude_and_codex_to_high(self) -> None:
+    def test_review_class_manifest_discloses_route(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        with mock.patch.dict("os.environ", {}, clear=True):
+            route = runner.resolve_claude_route(
+                "routine", runner.resolve_review_intensity("planning")
+            )
+
+        manifest = runner.review_class_manifest(route)
+
+        self.assertEqual(manifest["requested_class"], "routine")
+        self.assertEqual(manifest["effective_class"], "routine")
+        self.assertEqual(manifest["model"], "opus")
+        self.assertEqual(manifest["model_source"], "route")
+        self.assertEqual(manifest["effort"], "high")
+        self.assertFalse(manifest["defaulted"])
+
+    def test_cli_model_and_effort_override_environment_with_disclosure(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "PEER_REVIEW_CLAUDE_MODEL": "claude-fable-5",
+                "PEER_REVIEW_CLAUDE_EFFORT": "low",
+            }
+        )
+        result = subprocess.run(
+            [
+                "python3",
+                str(RUNNER_SCRIPT),
+                "--reviewers",
+                "claude",
+                "--review-class",
+                "routine",
+                "--claude-model",
+                "opus",
+                "--claude-effort",
+                "max",
+                "--review-scope",
+                "strict",
+                "--preflight",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+        self.assertIn(result.returncode, (0, 2))
+        self.assertIn("Review class: requested `routine`, effective `routine`", result.stdout)
+        self.assertIn("model `opus` from `cli`", result.stdout)
+        self.assertIn("effort `max` from `cli`", result.stdout)
+
+    def test_summary_discloses_route_instead_of_intensity_only(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        intensity = runner.resolve_review_intensity("planning")
+        with mock.patch.dict("os.environ", {}, clear=True):
+            route = runner.resolve_claude_route("routine", intensity)
+        participant = runner.Participant(
+            "claude", "Claude", "claude", None, None, "opus", "high", "route", "missing"
+        )
+        rendered = io.StringIO()
+
+        with redirect_stdout(rendered):
+            runner.print_summary(
+                [participant],
+                output_dir=None,
+                dry_run=True,
+                review_intensity=intensity,
+                claude_route=route,
+            )
+
+        self.assertIn("Review class: requested `routine`, effective `routine`", rendered.getvalue())
+        self.assertIn("model `opus` from `route`; effort `high` from `route`", rendered.getvalue())
+
+    def test_planning_intensity_uses_high_for_fable_and_codex(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
         intensity = runner.resolve_review_intensity("planning")
         with (
@@ -116,11 +193,69 @@ class RunnerTests(unittest.TestCase):
             codex = runner.preflight_participant("codex", intensity)
 
         self.assertEqual(claude.requested_effort, "high")
+        self.assertIsNone(claude.fallback_effort)
         self.assertEqual(codex.requested_effort, "high")
         self.assertIn("planning", claude.effort_status)
         self.assertIn("planning", codex.effort_status)
+        self.assertEqual(
+            intensity.note,
+            "planning intensity for advisory task discovery and prioritization; Claude routes and explicit Codex/GPT use high",
+        )
 
-    def test_gate_intensity_keeps_claude_and_codex_xhigh(self) -> None:
+    def test_planning_fable_ignores_lower_effort_override(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        intensity = runner.resolve_review_intensity("planning")
+        with (
+            mock.patch.dict("os.environ", {"PEER_REVIEW_CLAUDE_EFFORT": "low"}, clear=True),
+            mock.patch.object(runner.shutil, "which", return_value="/bin/claude"),
+            mock.patch.object(runner, "get_version", return_value="test"),
+        ):
+            participant = runner.preflight_participant("claude", intensity)
+
+        self.assertEqual(participant.requested_effort, "high")
+        self.assertIsNone(participant.fallback_effort)
+        self.assertIn("ignored effort override low", participant.effort_status)
+
+    def test_planning_fable_honors_xhigh_override_without_fallback(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        intensity = runner.resolve_review_intensity("planning")
+        with (
+            mock.patch.dict("os.environ", {"PEER_REVIEW_CLAUDE_EFFORT": "xhigh"}, clear=True),
+            mock.patch.object(runner.shutil, "which", return_value="/bin/claude"),
+            mock.patch.object(runner, "get_version", return_value="test"),
+        ):
+            participant = runner.preflight_participant("claude", intensity)
+
+        self.assertEqual(participant.requested_effort, "xhigh")
+        self.assertIsNone(participant.fallback_effort)
+
+    def test_planning_fable_honors_max_override_without_fallback(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        intensity = runner.resolve_review_intensity("planning")
+        with (
+            mock.patch.dict("os.environ", {"PEER_REVIEW_CLAUDE_EFFORT": "max"}, clear=True),
+            mock.patch.object(runner.shutil, "which", return_value="/bin/claude"),
+            mock.patch.object(runner, "get_version", return_value="test"),
+        ):
+            participant = runner.preflight_participant("claude", intensity)
+
+        self.assertEqual(participant.requested_effort, "max")
+        self.assertIsNone(participant.fallback_effort)
+
+    def test_custom_claude_primary_has_no_automatic_fallback(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        intensity = runner.resolve_review_intensity("gate")
+        with (
+            mock.patch.dict("os.environ", {"PEER_REVIEW_CLAUDE_MODEL": "opus"}, clear=True),
+            mock.patch.object(runner.shutil, "which", return_value="/bin/claude"),
+            mock.patch.object(runner, "get_version", return_value="test"),
+        ):
+            participant = runner.preflight_participant("claude", intensity)
+
+        self.assertEqual(participant.requested_effort, "xhigh")
+        self.assertIsNone(participant.fallback_effort)
+
+    def test_gate_intensity_uses_fable_and_codex_xhigh(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
         intensity = runner.resolve_review_intensity("gate")
         with (
@@ -137,7 +272,7 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("gate", claude.effort_status)
         self.assertIn("gate", codex.effort_status)
 
-    def test_claude_defaults_use_opus_48_xhigh_effort(self) -> None:
+    def test_claude_defaults_use_fable_5_high_without_backup(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
         with (
             mock.patch.dict("os.environ", {}, clear=True),
@@ -146,11 +281,128 @@ class RunnerTests(unittest.TestCase):
         ):
             participant = runner.preflight_participant("claude")
 
-        self.assertEqual(participant.requested_model, "opus")
-        self.assertEqual(participant.requested_effort, "xhigh")
-        self.assertIn("xhigh", participant.effort_status)
+        self.assertEqual(participant.requested_model, "claude-fable-5")
+        self.assertEqual(participant.requested_effort, "high")
+        self.assertIsNone(participant.fallback_model)
+        self.assertIsNone(participant.fallback_effort)
+        self.assertIn("Fable 5", participant.effort_status)
+        self.assertIn("fallback disabled", participant.effort_status)
 
-    def test_grok_defaults_use_composer_25_fast_model(self) -> None:
+    def test_refresh_defaults_disclose_opus_routine_and_fable_reserved_routes(self) -> None:
+        refresh = load_module(REFRESH_SCRIPT, "refresh_peer_review_clis")
+
+        self.assertEqual(refresh.DEFAULTS["claude"]["model"], "opus")
+        self.assertEqual(refresh.DEFAULTS["claude"]["effort"], "high")
+        self.assertEqual(refresh.DEFAULTS["claude"]["reserved_model"], "claude-fable-5")
+        self.assertEqual(refresh.DEFAULTS["claude"]["reserved_efforts"], ("high", "xhigh"))
+        self.assertIsNone(refresh.DEFAULTS["claude"]["fallback_model"])
+        self.assertIsNone(refresh.DEFAULTS["claude"]["fallback_effort"])
+
+    def test_claude_fallback_can_be_disabled_without_misreporting_preflight(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        with (
+            mock.patch.dict(
+                "os.environ",
+                {"PEER_REVIEW_CLAUDE_MODEL": "opus", "PEER_REVIEW_CLAUDE_FALLBACK_MODEL": ""},
+                clear=True,
+            ),
+            mock.patch.object(runner.shutil, "which", return_value="/bin/claude"),
+            mock.patch.object(runner, "get_version", return_value="test"),
+        ):
+            participant = runner.preflight_participant("claude")
+
+        self.assertIsNone(participant.fallback_model)
+        self.assertIn("fallback disabled", participant.effort_status)
+
+    def test_claude_retries_opus_xhigh_only_when_fable_is_unavailable(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        participant = runner.Participant(
+            key="claude",
+            label="Claude",
+            cli="claude",
+            cli_path="/bin/claude",
+            cli_version="test",
+            requested_model="claude-fable-5",
+            requested_effort="xhigh",
+            effort_status="test",
+            status="ready",
+            fallback_model="opus",
+            fallback_effort="xhigh",
+        )
+        results = [
+            subprocess.CompletedProcess([], 1, "", "overloaded_error: model overloaded"),
+            subprocess.CompletedProcess([], 0, "approved", ""),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(runner.subprocess, "run", side_effect=results) as run:
+            completed = runner.run_participant(participant, "prompt", Path(tmp), timeout_seconds=30)
+
+        self.assertEqual(run.call_count, 2)
+        primary_cmd = run.call_args_list[0].args[0]
+        fallback_cmd = run.call_args_list[1].args[0]
+        self.assertEqual(primary_cmd[primary_cmd.index("--model") + 1], "claude-fable-5")
+        self.assertEqual(primary_cmd[primary_cmd.index("--effort") + 1], "xhigh")
+        self.assertEqual(fallback_cmd[fallback_cmd.index("--model") + 1], "opus")
+        self.assertEqual(fallback_cmd[fallback_cmd.index("--effort") + 1], "xhigh")
+        self.assertTrue(completed.used_fallback)
+        self.assertEqual(completed.completed_model, "opus")
+        self.assertEqual(completed.completed_effort, "xhigh")
+        self.assertEqual(completed.status, "ran")
+        self.assertIn("used fallback", completed.notes)
+        with mock.patch("builtins.print") as print_mock:
+            runner.print_summary([completed], None, dry_run=False)
+        rendered = "\n".join(str(call.args[0]) if call.args else "" for call in print_mock.call_args_list)
+        self.assertIn("| Claude | test | `claude-fable-5` | `opus` |", rendered)
+
+    def test_claude_auth_failure_does_not_trigger_fallback(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        participant = runner.Participant(
+            key="claude",
+            label="Claude",
+            cli="claude",
+            cli_path="/bin/claude",
+            cli_version="test",
+            requested_model="claude-fable-5",
+            requested_effort="xhigh",
+            effort_status="test",
+            status="ready",
+            fallback_model="opus",
+            fallback_effort="xhigh",
+        )
+        result = subprocess.CompletedProcess([], 1, "", "Please login to continue")
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(runner.subprocess, "run", return_value=result) as run:
+            completed = runner.run_participant(participant, "prompt", Path(tmp), timeout_seconds=30)
+
+        self.assertEqual(run.call_count, 1)
+        self.assertFalse(completed.used_fallback)
+        self.assertIsNone(completed.completed_model)
+        self.assertEqual(completed.status, "auth_required")
+
+    def test_timeout_with_byte_output_is_recorded_without_crashing(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        participant = runner.Participant(
+            key="claude",
+            label="Claude",
+            cli="claude",
+            cli_path="/bin/claude",
+            cli_version="test",
+            requested_model="claude-fable-5",
+            requested_effort="xhigh",
+            effort_status="test",
+            status="ready",
+        )
+        timeout = subprocess.TimeoutExpired([], 5, output=b"partial output", stderr=b"partial error")
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(runner.subprocess, "run", side_effect=timeout):
+            completed = runner.run_participant(participant, "prompt", Path(tmp), timeout_seconds=5)
+            self.assertEqual(Path(completed.output_file).read_text(encoding="utf-8"), "partial output")
+            self.assertEqual(Path(completed.stderr_file).read_text(encoding="utf-8"), "partial error")
+
+        self.assertEqual(completed.status, "timeout")
+        self.assertIsNone(completed.completed_model)
+
+    def test_grok_defaults_use_grok_45_high_reasoning(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
         with (
             mock.patch.dict("os.environ", {}, clear=True),
@@ -160,13 +412,38 @@ class RunnerTests(unittest.TestCase):
         ):
             participant = runner.preflight_participant("grok")
 
-        self.assertEqual(participant.requested_model, "grok-composer-2.5-fast")
-        self.assertEqual(participant.requested_effort, "max; reasoning_effort=high")
+        self.assertEqual(participant.requested_model, "grok-4.5")
+        self.assertEqual(participant.requested_effort, "reasoning_effort=high")
 
-    def test_refresh_defaults_use_composer_25_fast_model(self) -> None:
+    def test_refresh_defaults_use_grok_45_model(self) -> None:
         refresh = load_module(REFRESH_SCRIPT, "refresh_peer_review_clis")
 
-        self.assertEqual(refresh.DEFAULTS["grok"]["model"], "grok-composer-2.5-fast")
+        self.assertEqual(refresh.DEFAULTS["grok"]["model"], "grok-4.5")
+        self.assertEqual(refresh.DEFAULTS["grok"]["effort"], "reasoning_effort=high")
+
+    def test_refresh_claude_report_requires_policy_critical_flags(self) -> None:
+        refresh = load_module(REFRESH_SCRIPT, "refresh_peer_review_clis")
+        incomplete_help = "--effort xhigh claude-fable-5 opus --tools --no-session-persistence"
+
+        with mock.patch.object(refresh, "command_output", return_value=incomplete_help):
+            report = refresh.claude_model_report()
+
+        self.assertEqual(report.status, "needs_manual_check")
+        self.assertIn("policy-critical", report.evidence)
+
+    def test_refresh_grok_report_requires_policy_critical_flags(self) -> None:
+        refresh = load_module(REFRESH_SCRIPT, "refresh_peer_review_clis")
+
+        def command_output(cmd, timeout=15):
+            if cmd[1] == "models":
+                return "You are logged in with grok.com.\n* grok-4.5 (default)"
+            return "--reasoning-effort --disable-web-search"
+
+        with mock.patch.object(refresh, "command_output", side_effect=command_output):
+            report = refresh.grok_model_report()
+
+        self.assertEqual(report.status, "needs_manual_check")
+        self.assertIn("policy-critical", report.evidence)
 
     def test_claude_command_has_no_default_budget_cap(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
@@ -243,11 +520,11 @@ class RunnerTests(unittest.TestCase):
 
         self.assertNotIn("--model", cmd)
 
-    def test_default_reviewer_roster_excludes_gemini_but_keeps_opt_in_alias(self) -> None:
+    def test_default_reviewer_roster_keeps_grok_opt_in(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
 
-        self.assertEqual(runner.parse_reviewers("all"), ["claude", "codex", "grok"])
-        self.assertEqual(runner.parse_reviewers("all-with-gemini"), ["claude", "codex", "gemini", "grok"])
+        self.assertEqual(runner.parse_reviewers("all"), ["claude"])
+        self.assertEqual(runner.parse_reviewers("all-with-gemini"), ["claude", "gemini"])
 
     def test_review_scope_auto_fails_closed_to_strict(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
@@ -285,8 +562,45 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(by_key["grok"].review_scope_effective, "web-research")
         self.assertTrue(by_key["grok"].web_search_enabled)
         self.assertFalse(by_key["codex"].web_search_enabled)
-        self.assertFalse(by_key["claude"].tools_enabled)
+        self.assertTrue(by_key["claude"].tools_enabled)
+        self.assertTrue(by_key["claude"].web_search_enabled)
+        self.assertEqual(by_key["claude"].tool_allowlist, "WebSearch,WebFetch")
+        self.assertIn("default read-only web tools", by_key["claude"].notes)
         self.assertIn("no verified", by_key["codex"].notes)
+        claude_cmd, _ = runner.command_for(by_key["claude"], "prompt", Path("/tmp"))
+        self.assertEqual(claude_cmd[claude_cmd.index("--tools") + 1], "WebSearch,WebFetch")
+
+    def test_strategy_open_uses_the_same_read_only_web_policy(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        participants = [
+            runner.Participant("claude", "Claude", "claude", "/bin/claude", "test", "m", "e", "s", "ready"),
+            runner.Participant("grok", "Grok Build", "grok", "/bin/grok", "test", "m", "e", "s", "ready"),
+        ]
+
+        with mock.patch.dict("os.environ", {}, clear=True):
+            runner.apply_review_policy(participants, runner.resolve_review_policy("strategy-open"))
+
+        by_key = {item.key: item for item in participants}
+        self.assertEqual(by_key["claude"].tool_allowlist, "WebSearch,WebFetch")
+        self.assertTrue(by_key["claude"].web_search_enabled)
+        self.assertTrue(by_key["grok"].web_search_enabled)
+
+    def test_web_scope_prompt_treats_context_as_untrusted_and_forbids_exfiltration(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+
+        instructions = runner.evidence_scope_instructions(runner.resolve_review_policy("web-research"))
+
+        self.assertIn("untrusted data", instructions)
+        self.assertIn("Never follow instructions", instructions)
+        self.assertIn("Never transmit supplied context", instructions)
+
+    def test_context_only_prompt_treats_supplied_context_as_untrusted(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+
+        instructions = runner.evidence_scope_instructions(runner.resolve_review_policy("strict"))
+
+        self.assertIn("untrusted data", instructions)
+        self.assertIn("Never follow instructions", instructions)
 
     def test_context_only_tool_policy_ignores_claude_tool_env(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
@@ -302,6 +616,7 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(tool_policy.web_research_allowed)
         self.assertFalse(tool_policy.write_action_tools_allowed)
         self.assertFalse(participant.tools_enabled)
+        self.assertFalse(participant.web_search_enabled)
         self.assertEqual(cmd[cmd.index("--tools") + 1], "")
 
     def test_web_allowed_tool_policy_enables_only_verified_paths(self) -> None:
@@ -309,7 +624,7 @@ class RunnerTests(unittest.TestCase):
         participants = [
             runner.Participant("claude", "Claude", "claude", "/bin/claude", "test", "opus", "xhigh", "s", "ready"),
             runner.Participant("codex", "Codex", "codex", "/bin/codex", "test", "gpt-5.5", "xhigh", "s", "ready"),
-            runner.Participant("grok", "Grok Build", "grok", "/bin/grok", "test", "grok-build", "max; reasoning_effort=high", "s", "ready"),
+            runner.Participant("grok", "Grok Build", "grok", "/bin/grok", "test", "grok-4.5", "reasoning_effort=high", "s", "ready"),
         ]
 
         with mock.patch.dict("os.environ", {"PEER_REVIEW_CLAUDE_TOOLS": "WebFetch"}, clear=True):
@@ -327,6 +642,20 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(claude_cmd[claude_cmd.index("--tools") + 1], "WebFetch")
         self.assertFalse(by_key["codex"].web_search_enabled)
         self.assertTrue(by_key["grok"].web_search_enabled)
+
+    def test_web_allowed_tool_policy_rejects_unsupported_claude_tools(self) -> None:
+        runner = load_module(RUNNER_SCRIPT, "run_peer_review")
+        participant = runner.Participant("claude", "Claude", "claude", "/bin/claude", "test", "opus", "xhigh", "s", "ready")
+
+        with mock.patch.dict("os.environ", {"PEER_REVIEW_CLAUDE_TOOLS": "WebSearch,Bash"}, clear=True):
+            policy = runner.resolve_review_policy("web-research")
+            runner.apply_review_policy([participant], policy)
+            cmd, _ = runner.command_for(participant, "prompt", Path("/tmp"))
+
+        self.assertFalse(participant.tools_enabled)
+        self.assertEqual(participant.tool_allowlist, "")
+        self.assertEqual(cmd[cmd.index("--tools") + 1], "")
+        self.assertIn("unsupported Claude tools", participant.notes)
 
     def test_tool_policy_manifest_discloses_fail_closed_rules(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
@@ -348,7 +677,7 @@ class RunnerTests(unittest.TestCase):
                 cli_path="/bin/grok",
                 cli_version="test",
                 requested_model="grok-build",
-                requested_effort="max; reasoning_effort=high",
+                requested_effort="reasoning_effort=high",
                 effort_status="test",
                 status="ready",
             )
@@ -358,6 +687,24 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("--max-turns", cmd)
         turns = int(cmd[cmd.index("--max-turns") + 1])
         self.assertGreaterEqual(turns, 32)
+        self.assertIn("--reasoning-effort", cmd)
+        self.assertEqual(cmd[cmd.index("--reasoning-effort") + 1], "high")
+        self.assertNotIn("--effort", cmd)
+
+    def test_grok_model_parser_accepts_default_and_non_default_bullets(self) -> None:
+        refresh = load_module(REFRESH_SCRIPT, "refresh_peer_review_clis")
+
+        models = refresh.parse_grok_models(
+            """
+Default model: grok-4.5
+
+Available models:
+  * grok-4.5 (default)
+  - grok-composer-2.5-fast
+"""
+        )
+
+        self.assertEqual(models, {"grok-4.5", "grok-composer-2.5-fast"})
 
     def test_grok_command_disables_web_search_by_default(self) -> None:
         runner = load_module(RUNNER_SCRIPT, "run_peer_review")
@@ -369,7 +716,7 @@ class RunnerTests(unittest.TestCase):
                 cli_path="/bin/grok",
                 cli_version="test",
                 requested_model="grok-build",
-                requested_effort="max; reasoning_effort=high",
+                requested_effort="reasoning_effort=high",
                 effort_status="test",
                 status="ready",
             )
@@ -388,7 +735,7 @@ class RunnerTests(unittest.TestCase):
                 cli_path="/bin/grok",
                 cli_version="test",
                 requested_model="grok-build",
-                requested_effort="max; reasoning_effort=high",
+                requested_effort="reasoning_effort=high",
                 effort_status="test",
                 status="ready",
                 review_scope_effective="web-research",
@@ -410,7 +757,7 @@ class RunnerTests(unittest.TestCase):
                 cli_path="/bin/grok",
                 cli_version="test",
                 requested_model="grok-build",
-                requested_effort="max; reasoning_effort=high",
+                requested_effort="reasoning_effort=high",
                 effort_status="test",
                 status="ready",
             )
@@ -429,7 +776,7 @@ class RunnerTests(unittest.TestCase):
                 cli_path="/bin/grok",
                 cli_version="test",
                 requested_model="grok-build",
-                requested_effort="max; reasoning_effort=high",
+                requested_effort="reasoning_effort=high",
                 effort_status="test",
                 status="ready",
             )
@@ -571,13 +918,13 @@ class SkillDocumentationTests(unittest.TestCase):
         self.assertIn("display_name: \"ChatGPT Pro Peer Review\"", text)
         self.assertIn("$chatgpt-pro-peer-review", text)
 
-    def test_peer_review_docs_use_composer_25_fast_default(self) -> None:
+    def test_peer_review_docs_use_grok_45_default(self) -> None:
         skill_text = PEER_REVIEW_SKILL.read_text(encoding="utf-8")
         readme_text = README.read_text(encoding="utf-8")
 
-        self.assertIn("grok-composer-2.5-fast", skill_text)
-        self.assertIn("PEER_REVIEW_GROK_MODEL=grok-composer-2.5-fast", skill_text)
-        self.assertIn("grok-composer-2.5-fast", readme_text)
+        self.assertIn("grok-4.5", skill_text)
+        self.assertIn("PEER_REVIEW_GROK_MODEL=grok-4.5", skill_text)
+        self.assertIn("grok-4.5", readme_text)
 
     def test_peer_review_docs_define_intensity_policy(self) -> None:
         skill_text = PEER_REVIEW_SKILL.read_text(encoding="utf-8")
@@ -590,9 +937,34 @@ class SkillDocumentationTests(unittest.TestCase):
             self.assertIn("`critical`", text)
             self.assertIn("--intensity gate", text)
             self.assertIn("Humans do not need to specify", text)
-        self.assertIn("infer the review intensity", metadata_text)
-        self.assertIn("default to gate", metadata_text)
-        self.assertIn("Gemini opt-in", metadata_text)
+        self.assertIn("only when I explicitly request external review", metadata_text)
+        self.assertIn("Fable 5", metadata_text)
+        self.assertIn("Opus/high", metadata_text)
+        self.assertIn("no automatic fallback", metadata_text.lower())
+        self.assertNotIn("default to gate", metadata_text)
+        self.assertNotIn("Claude and Grok Build CLI peer reviews by default", readme_text)
+        self.assertIn("manual", readme_text.lower())
+        self.assertIn("Fable 5", readme_text)
+        self.assertIn("`high`", readme_text)
+        self.assertNotIn("Opus 4.8 is retried", skill_text)
+
+    def test_peer_review_docs_define_opus_first_routing_policy(self) -> None:
+        skill_text = PEER_REVIEW_SKILL.read_text(encoding="utf-8")
+        readme_text = README.read_text(encoding="utf-8")
+        metadata_text = PEER_REVIEW_METADATA.read_text(encoding="utf-8")
+
+        for text in (skill_text, readme_text, metadata_text):
+            self.assertIn("routine", text)
+            self.assertIn("Opus", text)
+            self.assertIn("judgment", text)
+            self.assertIn("Fable 5", text)
+            self.assertIn("load-bearing", text)
+            self.assertIn("manual", text.lower())
+            self.assertIn("no automatic", text.lower())
+        for text in (skill_text, readme_text):
+            self.assertIn("--review-class", text)
+            self.assertIn("auto", text)
+            self.assertIn("fails closed", text)
 
     def test_peer_review_docs_define_fail_closed_tool_policy(self) -> None:
         skill_text = PEER_REVIEW_SKILL.read_text(encoding="utf-8")
@@ -601,7 +973,11 @@ class SkillDocumentationTests(unittest.TestCase):
         for text in (skill_text, readme_text):
             self.assertIn("`context-only`", text)
             self.assertIn("`web-allowed`", text)
+            self.assertIn("WebSearch", text)
+            self.assertIn("WebFetch", text)
             self.assertIn("write/action tools", text)
+            self.assertIn("untrusted data", text)
+            self.assertIn("prompt-enforced", text)
             self.assertIn("Humans do not need to specify tool flags", text)
 
 
