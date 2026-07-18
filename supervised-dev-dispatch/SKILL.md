@@ -197,15 +197,15 @@ The lead owns skill selection. Each worker brief should name required, optional-
 - `Optional triggers`: skills the worker may use only if their trigger condition appears during the scoped task.
 - `Forbidden`: skills or tools the worker must not use.
 
-Workers must not use `supervised-dev-dispatch`, `dispatching-parallel-agents`, `subagent-driven-development`, or any skill/tool that launches additional sessions unless the user explicitly authorizes nested dispatch in `DECISIONS.md`. Workers do not broaden scope just because a skill suggests more work; they report findings or candidate tasks back to the lead.
+Workers must not use `supervised-dev-dispatch` or any skill/tool that launches additional sessions unless the user explicitly authorizes nested dispatch in `DECISIONS.md`. Workers do not broaden scope just because a skill suggests more work; they report findings or candidate tasks back to the lead.
 
 Default routing guidance:
 
-- implementation or bugfix: `test-driven-development`; add `systematic-debugging` when the failure is not immediately explained
-- isolated branches/worktrees: lead uses `using-git-worktrees`
-- ambiguous scoped work: `writing-plans`
-- before claiming completion: `verification-before-completion`
-- branch finalization or cleanup: `finishing-a-development-branch`
+- implementation or bugfix: capture a failing test or reproducible characterization when practical; diagnose unexplained failures before editing
+- isolated branches/worktrees: follow the shared Git isolation and ownership rules
+- ambiguous scoped work: write a bounded plan with explicit verification and stop conditions
+- before claiming completion: run the strongest relevant verification and report the observed evidence
+- branch finalization or cleanup: follow the shared Git delivery and hard-stop rules
 - frontend visual or behavioral changes: `build-web-apps:frontend-testing-debugging`, `playwright`, and/or `web-design-guidelines`
 - security-sensitive changes: `codex-security:security-diff-scan` or `codex-security:security-scan`
 - GitHub PR comments, PR hygiene, or CI failures: relevant `github:*` skills
