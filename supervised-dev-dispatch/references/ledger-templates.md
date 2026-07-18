@@ -17,6 +17,9 @@ Worker execution policy: <delegated worker threads by default | sidebar-visible 
 Ledger root: <absolute path to this run ledger>
 Ledger root guard: verified; central ledger writes must use this path and must not land in the primary checkout by accident
 Central ledger writers: lead only by default; optional dispatcher may write only in split-lead mode; workers only with narrow brief permission
+Active command-center registry: <absolute path resolved through .delegate/command-center/CURRENT or none>
+Standing authorization source: active registry DECISIONS.md only
+Central decision refs: <D-YYYYMMDD-HHMMSS IDs or none>
 Run style: <interactive | continuous/unattended>
 Single-lead default: yes; separate dispatcher only when explicitly requested or required by automation
 Target branch/base: <branch> @ <sha>
@@ -33,7 +36,7 @@ Primary checkout rule: workers must not edit this path unless it is their assign
 - PR creation: allowed
 - Merge target: <branch>
 - Merge method: <approval required by default | GitHub squash/rebase/merge if explicitly granted>
-- Merge allowed: approval required unless explicitly granted in DECISIONS.md
+- Merge allowed: approval required unless explicitly granted by an exact active-registry decision ID referenced in run DECISIONS.md
 - Local run-owned worktree cleanup: <allowed after containment | approval required>
 - Remote branch deletion/destructive cleanup: approval required
 - Deploy/live mutation: approval required
@@ -57,7 +60,7 @@ Primary checkout rule: workers must not edit this path unless it is their assign
 
 ## Effort Policy
 - Effort classes: routine, complex, critical.
-- Worker default: routine / medium unless task ambiguity or risk justifies high.
+- Codex implementer default: routine / high; do not lower mid-sized or large implementation below high.
 - Lead planning default: complex / high.
 - Peer-review planning intensity: planning.
 - Peer-review merge/readiness intensity: gate.
@@ -92,7 +95,7 @@ Primary checkout rule: workers must not edit this path unless it is their assign
 - Dependencies/lockfiles/CI workflow changes
 - Bulk deletion/destructive cleanup
 - Force push except owned unmerged worker branch
-- Remote branch deletion/history rewrite outside run-owned merged branches
+- Remote branch deletion or history rewrite: approval required; cleanup outside run-owned artifacts: approval required
 - Capital-sensitive systems
 - Expanding a worker from a narrow task into a new product direction
 
@@ -292,9 +295,11 @@ Questions are lane-scoped by default. `Blocking Scope` controls what must pause;
 ```markdown
 # Decisions
 
-| Question | Scope | Approved Action | Limits | Decided By | Time | User Quote/Summary | Notes |
+Run decisions are run-scoped and cannot create standing authorization. When relying on a standing authorization, cite its central command-center decision ID instead of copying its text as authority.
+
+| Question | Scope | Authority Class | Approved Action | Limits | Central Decision Ref / User Quote | Time | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Q001 | <task/lane/run> | <decision/action> | <limits> | user via lead thread | <time> | <quote/summary> | <notes> |
+| Q001 | <task/lane/run> | <run-scoped/current-thread/central-ref> | <decision/action> | <limits> | <D-ID or quote> | <time> | <notes> |
 ```
 
 ## PR_REVIEW.md
@@ -302,11 +307,11 @@ Questions are lane-scoped by default. `Blocking Scope` controls what must pause;
 ```markdown
 # PR Review
 
-| Task | PR | Diff Reviewed | Local Verification | Hosted CI | Peer Review | Intensity | Decision | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T001 | <url> | yes/no | <commands> | <ci-not-run/ci-unavailable/ci-external-blocker/ci-failed-needs-triage/ci-passed> | <mode/result/reused> | gate/critical | merge/defer/fix | <notes> |
+| Task | PR | Final Candidate SHA | Diff Reviewed | Verification Evidence Reviewed | Hosted CI | Peer Review | Intensity | Decision | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T001 | <url> | <sha> | yes/no | <commands/results> | <ci-not-run/ci-unavailable/ci-external-blocker/ci-failed-needs-triage/ci-passed> | <mode/result/reused> | gate/critical | merge/defer/fix | <notes> |
 
-Merge requires `Diff Reviewed=yes`, concrete local verification evidence or user-waived verification, peer review for code changes unless explicitly waived in RUN.md, run-policy approval, and target-branch containment evidence before cleanup.
+Merge requires review of the final candidate diff and its verification evidence, peer review for code changes unless explicitly waived in RUN.md, run-policy approval, and target-branch containment evidence before cleanup. Earlier strategy or architecture advice does not satisfy this review.
 ```
 
 ## CLEANUP.md

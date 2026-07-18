@@ -11,7 +11,12 @@ Run a supervised parallel development campaign, not an unrestricted autonomous s
 
 Use this skill only when the user explicitly asks for a coordinated multi-session run, a goal loop, an autopilot-like development loop, continuous dispatch, or parallel work across branches/worktrees.
 
-Default objective for goal-loop or nonstop prompts: keep making safe, reviewable progress until no useful task candidates remain or the user directs a stop. The default is continuous dispatch with draft PRs, local verification, peer review, and ledgered outcomes; it is not automatic merge, deploy, live-data mutation, or destructive cleanup.
+This is a Codex-native campaign skill. It does not invoke Claude-specific day
+skills, goal commands, hooks, Workflows, external-model subagents, or Codex CLI
+self-delegation. An external model participates only when the user explicitly
+requests that model or peer review in the active task.
+
+Default objective for goal-loop or nonstop prompts: keep making safe, reviewable progress until no useful task candidates remain or the user directs a stop. The default is continuous dispatch with draft PRs, local verification, and ledgered outcomes; it is not automatic peer review, merge, deploy, live-data mutation, or destructive cleanup.
 
 ## Operating Model
 
@@ -52,25 +57,33 @@ Ask briefly before dispatching unless the user already answered or the prompt cl
 4. Restrictions: forbidden paths/actions beyond the defaults.
 5. WIP: default maximum 3 useful active worker lanes total. Suggested mix is `2 implementers + 1 auditor/reviewer`; use 3 implementers only when tasks are low-risk, disjoint, and review debt is under control. Running fewer than 3 is correct when only fewer safe, useful, disjoint tasks exist, but record the hold reason.
 6. Run style: interactive or continuous/unattended. Use one lead thread by default and `CI-soft draft PR` mode.
+7. Standing authorizations, up front: while the user is still present, identify
+   the hard-stop approvals this run's plan will predictably need. Resolve
+   `.delegate/command-center/CURRENT`, read the active registry's `DECISIONS.md`,
+   and record every relied-on standing authorization by central decision ID in
+   the run's `DECISIONS.md`. The command-center registry is the sole source of
+   standing authorization; a supervised-run decision is run-scoped and cannot
+   create one. The lever for more autonomy is more written authorizations,
+   never looser gates.
 
 If the user asks for minimal restrictions, keep reversible repo work allowed but preserve the hard stops below.
 
 Default run settings when survey is skipped:
 
 - focus: highest-priority progress toward the repo/project goal
-- sources: open PR debt, issues, repo TODOs, source-of-truth docs, lessons, failing tests, worker findings, and peer-review planning
+- sources: open PR debt, issues, repo TODOs, source-of-truth docs, lessons, failing tests, worker findings, and any explicitly requested peer-review results
 - autonomy: isolated worktrees/branches and draft PRs allowed; merge, deploy, live mutation, destructive cleanup, dependency/lockfile/CI/workflow changes, secrets/auth, and remote branch deletion require explicit approval
 - WIP: maximum 3 useful active worker lanes total; suggested mix `2 implementers + 1 auditor/reviewer`; if below cap while ready queued work exists, launch the next safe worker or record the hold reason
 - run style: continuous/unattended for goal-loop, nonstop, overnight, or "stop when no more tasks" prompts
 - lead mode: single current thread by default; split-lead/separate dispatcher only when explicitly requested or required by non-interactive automation
 - CI: CI-soft draft PR mode
 - stop condition: no safe useful candidates remain, the user directs stop, tools/auth/environment prevent meaningful progress, or all remaining useful work is blocked by hard-stop approvals
-- recursive task discovery: enabled with peer-review planning by default
-- effort policy: three classes only: `routine`, `complex`, `critical`; workers default routine/medium, lead planning defaults complex/high, merge/readiness and protected-area decisions are critical/xhigh
+- recursive task discovery: enabled from repo and worker evidence; peer review is manual-only
+- effort policy: three classes only: `routine`, `complex`, `critical`; Codex implementer high is the default, lead planning defaults complex/high, and xhigh is reserved for critical work and reviewers
 
 ## Hard Stops
 
-These hard stops are minimum dispatch safety rules. They override looser repo-local instructions unless the user explicitly records a run-specific exception in `DECISIONS.md`.
+These hard stops are minimum dispatch safety rules. They override looser repo-local instructions unless the active command-center registry's `DECISIONS.md` contains a standing exception for the exact case or the user explicitly approves the action in the current thread. A supervised-run decision never creates or expands a standing exception. The machine-wide canonical list lives in the global AGENTS/shared-canon hard-stops block; if this list and that block disagree, the STRICTER rule wins.
 
 Require explicit user approval before:
 
@@ -80,14 +93,27 @@ Require explicit user approval before:
 - dependency additions, lockfile changes, CI/workflow edits, or supply-chain/auth configuration changes
 - bulk deletion, destructive cleanup, force pushes except updating an owned unmerged worker branch
 - remote branch deletion, git history rewrite, or cleanup outside run-owned artifacts
+- merges or pushes to shared branches
 - capital-sensitive or trading/fund-moving systems
 - expanding a worker from a narrow task into a new product direction
 
-Any role that hits a hard stop reports it to the lead. The lead records it in `QUESTIONS.md`, asks the user, and resumes the affected lane only after `DECISIONS.md` is updated with the user's actual decision. Do not infer approvals. Quote or summarize the user's answer in `DECISIONS.md`.
+Any role that hits a hard stop reports it to the lead immediately. The lead records it in `QUESTIONS.md`, links any applicable central decision ID in the run's `DECISIONS.md`, and relays a concise, one-reply request to the user without waiting for other lanes. Resume the affected lane only after the user decides or an exact central decision applies. Do not infer, defer, absorb, or self-approve hard stops.
 
 While a hard-stop question is open, block only the affected lane, branch, deployment, cleanup, or task family. Continue unrelated safe work when it can be isolated cleanly. Do not merge, deploy, clean affected branches, approve affected continuations, or infer approval for the blocked action.
 
-Central ledger authority: the lead owns writes to the central run ledger. In explicitly recorded split-lead mode, the optional dispatcher may also write ledger updates. Workers report hard stops, findings, and completion evidence in their assigned thread or in an explicitly assigned worker report path; workers may edit central ledger files only when their brief explicitly grants that narrow permission.
+## Command-center authority
+
+When `.delegate/command-center/CURRENT` exists, it contains the absolute path of the active registry directory. That registry's `DECISIONS.md` is the sole authority for standing authorizations and hard-stop exceptions. `HANDOFF.md` indexes active tracks; local track ledgers under `.delegate/ledgers/` reference central decision IDs but never copy their text as authority.
+
+Only the active lead writes the track ledger. Workers report evidence to the lead but must not edit the track ledger. Before a new lead writes, record the leadership handoff in the ledger.
+
+Whenever status, lead, next action, or closeout changes, update `HANDOFF.md` and the track ledger in the same lead operation. If either write fails, treat state as ambiguous and repair both before handoff or resume.
+
+Supervised-run `DECISIONS.md` files remain run-scoped. They may record a current-run choice or cite a central decision ID, but they cannot establish standing authorization.
+
+## Run-ledger authority
+
+The lead owns writes to the central run ledger. In explicitly recorded split-lead mode, the optional dispatcher may also write run-ledger updates. Workers report hard stops, findings, and completion evidence in their assigned thread or an explicitly assigned worker report path; narrow worker permission to edit a run file never permits edits to the command-center registry or track ledger.
 
 ## Ledger
 
@@ -99,7 +125,7 @@ Create a run ledger before launching workers. Prefer repo-local scratch paths su
 
 Use `references/ledger-templates.md` for file templates. Minimum files:
 
-- `RUN.md`: objective, focus, rules, WIP limits, autonomy, hard stops
+- `RUN.md`: objective, focus, rules, WIP limits, autonomy, hard stops, active registry path, and central decision references
 - `TASK_QUEUE.md`: candidates, priority, status, branch, risk class
 - `TASK_DISCOVERY.md`: accepted/rejected task ideas from repo scans, workers, and peer-review planning
 - `BRIEFS/Txxx.md`: durable worker brief with cwd, branch, allowed paths, forbidden paths, tests, and return format
@@ -129,7 +155,7 @@ Before launching any worker:
 4. Record target base SHA and branch in the ledger.
 5. Verify the central ledger root is the intended run path. If the lead is in a separate worktree, confirm ledger writes will not land in the primary checkout by accident.
 6. Create or verify an isolated worker worktree/branch, preferably with `git worktree add <absolute-worktree-path> -b codex/<task> <base-sha>`.
-7. Write a durable `BRIEFS/Txxx.md` with absolute worker cwd, branch, base SHA, primary checkout path, allowed paths, forbidden paths/actions, tests, return format, and hard stops.
+7. Write a durable `BRIEFS/Txxx.md` with absolute worker cwd, branch, base SHA, primary checkout path, allowed paths, forbidden paths/actions, tests, return format, and hard stops. The brief must name one **primary verifier**: the strongest independent check closest to the surface where the outcome actually matters. Builds and lint are supporting evidence unless they are the real contract under test.
 8. Pre-launch brief check: verify the exact `BRIEFS/Txxx.md` path exists, is readable, and is the same absolute path that will be given to the worker.
 9. Select and record the worker execution mode before launch: `sidebar-visible thread`, `delegated worker thread`, `local/subagent fallback`, or `lead-direct`.
 10. Require the worker to verify its cwd equals the assigned worktree path and branch before any write.
@@ -141,12 +167,17 @@ Default worker classes:
 - `auditor`: read-only unless the lead logs a narrow follow-up branch authorization and rechecks hard stops.
 - `reviewer`: peer-review/diff critique only; never mutates repo.
 
+Every implementation brief must include this anti-cheating clause: do not
+weaken or skip tests, narrow the scope, hide failures, or swap in mocks/stubs
+to satisfy the done-when; surface the blocker instead, report exact verification
+commands with key output, and disclose any mocks/stubs touched.
+
 Launch replacements continuously while there are safe, useful task candidates and active worker capacity. If active workers are below the WIP limit and a queued ready task exists, the lead must either launch it or record a hold reason in `TASK_QUEUE.md` and `PROGRESS.md` before the next checkpoint.
 
 Default `CI-soft draft PR` mode:
 
 - continue launching only disjoint, conflict-aware tasks that can open draft PRs or produce read-only audit results
-- require local verification and peer-review evidence before opening code PRs
+- require local verification before opening code PRs; require peer-review evidence only when the user explicitly requested peer review in the active task
 - record hosted CI as `not executed` or `external blocker` rather than treating it as passed
 - do not merge, deploy, clean up merged branches, edit CI/workflows, or override hard stops without explicit user approval
 - do not stop solely because of draft PR count, hosted CI failure/unavailability, or an unanswered question that affects only one isolated lane
@@ -161,13 +192,13 @@ Use three effort classes. Do not create a larger taxonomy during a run.
 
 | Class | Default Effort | Peer-Review Intensity | Use For |
 | --- | --- | --- | --- |
-| `routine` | worker medium | none or `planning` if review is useful | scoped implementation, docs, focused bugfixes with clear tests |
-| `complex` | lead/worker high | `planning` or `gate` | task selection, ambiguous implementation, shared behavior, multi-file changes |
-| `critical` | lead/review xhigh | `critical` | schema, migrations, auth, security, privacy, public/rights-sensitive surfaces, deploy, shared VM, scheduler, CI/workflows, extraction/import, provenance, point-in-time correctness, broad refactors, API contracts, merge/readiness decisions, weak or conflicting verification |
+| `routine` | implementer high | none unless explicitly requested | scoped implementation, docs, focused bugfixes with clear tests |
+| `complex` | lead/implementer high | manual only | task selection, ambiguous implementation, shared behavior, multi-file changes |
+| `critical` | lead xhigh | manual only | schema, migrations, auth, security, privacy, public or rights-sensitive surfaces, deploy, shared infrastructure, scheduler, CI/workflows, extraction/import, provenance, point-in-time correctness, broad refactors, API contracts, merge/readiness decisions, weak or conflicting verification |
 
 Before launching each worker, record `Effort class`, `Requested effort`, and `Reason` in the worker brief. If the host does not expose a mechanical effort control for worker threads, treat the recorded effort as a prompt-level instruction and record that caveat.
 
-Use `peer-review --intensity planning` for recursive task discovery and queue prioritization. Use `--intensity gate` for normal pre-merge diff critique, launch readiness, and blocking reviews. Use `--intensity critical` for the critical triggers above.
+Do not invoke `peer-review` based on these effort classes. If the user explicitly requests peer review, default to `planning`/`high`; use `gate`, `critical`, `xhigh`, or `max` only when the request explicitly names it.
 
 ## Recursive Task Discovery
 
@@ -176,18 +207,10 @@ The lead should keep the queue replenished from current state, not from a stale 
 1. explicit user focus and current run decisions
 2. blocking findings from completed workers and PR reviews
 3. repo instructions, current source-of-truth docs, `docs/LESSONS.md`, open issues/PRs, failing tests, TODOs, and recent diffs
-4. peer-review planning suggestions
+4. suggestions from any peer review the user explicitly requested
 5. lead-proposed tasks from gaps found while auditing
 
-Run `peer-review` as a planning council with `--intensity planning` by default:
-
-- at initial task selection after reading repo state
-- when `TASK_QUEUE.md` has fewer ready tasks than available worker capacity
-- after a meaningful state change such as a completed PR, rejected approach, major audit finding, or exhausted task family
-
-Use `Strategy Review` or `Deciding Vote` with `broad-repo` scope and `planning` intensity for task discovery unless the next-task decision is a strict diff/schema/security/deploy decision. For task discovery, ask reviewers for high-priority, disjoint, low-conflict tasks with clear verification paths and solo-operator value. The lead must validate, rank, accept, reject, or defer suggestions before adding them to `TASK_QUEUE.md`; reviewers do not directly assign workers. Record the review inputs, accepted tasks, rejected tasks, intensity, and reasons in `TASK_DISCOVERY.md`.
-
-If peer-review planning is unavailable because tools, auth, quota, or runtime failed, record the failure in `TASK_DISCOVERY.md` and continue with repo-grounded lead task discovery for low-risk work. Do not treat peer-review unavailability as permission to make high-risk architecture, schema, security, deploy, or product-direction decisions alone.
+Do not run a planning council automatically. When the user explicitly requests a planning peer review, use the named reviewer and effort. If the request does not name either, use the configured default reviewer at planning effort with no fallback. Otherwise no reviewer is selected or invoked. The lead validates, ranks, accepts, rejects, or defers suggestions before adding them to `TASK_QUEUE.md`; reviewers never assign workers directly. Record the inputs and decisions in `TASK_DISCOVERY.md` only for a review that actually ran.
 
 ## Skill Routing Policy
 
@@ -213,19 +236,7 @@ Default routing guidance:
 
 ## Peer Review Policy
 
-`peer-review` is lead-owned by default. Workers should not run it unless their brief explicitly authorizes it; they should instead report when peer review is recommended. Reviewer-class sessions may run peer-review only in the mode and scope recorded in the brief and must not mutate the repo.
-
-Use `peer-review` for:
-
-- consequential task selection, prioritization, product, architecture, or data-model decisions (`Strategy Review` or `Deciding Vote`; `planning` intensity unless a critical trigger applies)
-- risky implementation plans or continuations touching schema, migrations, data model, auth, security, privacy, public or rights-sensitive surfaces, deploy, shared VM, scheduler, CI/workflows, extraction/import, provenance, point-in-time correctness, broad refactors, or API contracts (`critical` intensity)
-- any code change that will be merged (`Diff Critique`, strict scope, `gate` intensity) unless `RUN.md` records an explicit user-approved exception for trivial docs-only or metadata-only work
-- launch, deploy, or readiness decisions (`Launch Readiness`, strict scope, `critical` intensity for deploy/live/shared-infra decisions; otherwise `gate`)
-- weak verification, disputed coverage, or risky tests (`Coverage Audit`, strict scope, `critical` intensity when the result gates merge/deploy)
-
-Do not use `peer-review` for small isolated docs, copy, metadata, or read-only inventory tasks unless the user asks or one of the risk triggers above applies.
-
-Reuse rule: a strict pre-PR diff critique may satisfy the pre-merge peer-review gate if it used `gate` or `critical` intensity, the diff did not materially change after the review, and `PR_REVIEW.md` records that reuse decision. Rerun peer-review after material code, schema, security, deploy, or contract changes.
+`peer-review` is manual-only for the lead and every worker. A worker brief cannot authorize it unless the user's explicit request is quoted or referenced from the active decision registry. Risk, readiness, merge intent, queue depth, weak verification, or a reviewer role does not trigger it. When the user requests review, use only the named reviewer, mode, intensity, and fallback; unspecified manual reviews use the configured planning default with no fallback. Reviewer sessions remain read-only, and the lead validates their findings against repository evidence.
 
 ## Worker Continuation
 
@@ -269,12 +280,12 @@ If a worker edits the primary checkout, wrong branch, wrong ledger root, or a mi
 
 Workers' claims are not final. The lead must independently review before merge:
 
-1. Read the final worker report and diff.
+1. Read the final worker report and final candidate diff.
 2. Verify branch freshness against target base.
 3. Run relevant tests. If verification is not possible, mark `needs user decision`; do not auto-merge.
-4. Run `peer-review` according to the Peer Review Policy above.
+4. If the user explicitly requested peer review, run it against the final candidate diff and verification evidence according to the Peer Review Policy above; otherwise continue with the lead's own diff audit.
 5. Classify findings: fix, defer, reject, or needs user decision.
-6. Merge only if `RUN.md` specifies the target branch, merge method, required approval level, and cleanup permission, and all gates are satisfied. Default merge permission is `approval required` unless the user explicitly grants merge autonomy in `DECISIONS.md`.
+6. Merge only if `RUN.md` specifies the target branch, merge method, required approval level, and cleanup permission, and all gates are satisfied. Default merge permission is `approval required` unless the user approves it in the current thread and the run records that decision, or an exact active-registry decision ID grants it and the run cites that ID.
 7. After merging, run an integration check on the target branch when the merge changes code or shared contracts.
 8. Remove only completed local worker worktrees/branches after merge containment is proven and `RUN.md` allows local run-owned cleanup. Remote branch deletion, destructive cleanup, and cleanup outside run-owned artifacts require explicit approval.
 9. Preserve unrelated dirty state and abandoned branches unless the user approves cleanup.
@@ -335,11 +346,11 @@ When the user asks for status, lead with:
 | Brief path missing or unreadable | Pre-launch brief check verifies the exact absolute path before worker start |
 | Ledger writes land in wrong checkout | Ledger root guard verifies the intended run path before any central ledger write |
 | Active workers stay below cap without explanation | Launch queued ready work or record a hold reason in `TASK_QUEUE.md` and `PROGRESS.md` |
-| Many workers create review debt | Keep opening draft PRs only with local verification, peer review, and OUTCOMES entries; do not merge or clean up without gates |
+| Many workers create review debt | Keep opening draft PRs only with local verification and OUTCOMES entries; include peer review only when explicitly requested; do not merge or clean up without approval |
 | More code branches finish than the lead can review | Review-debt throttle allows only one unreviewed code branch before new implementers pause; use read-only auditors/reviewers instead |
 | Worker keeps expanding scope | Same-scope continuation rule; otherwise queue new task |
 | Hard-stop approval buried in chat | `QUESTIONS.md` and `DECISIONS.md` only; continue unrelated lanes when safe |
-| Green worker tests hide bad diff | Lead diff audit, rerun tests, peer-review before merge |
+| Green worker tests hide bad diff | Lead diff audit and rerun tests; add peer review only when the user explicitly requests it |
 | Cleanup removes user work | Cleanup only run-owned worktrees/branches; preserve unrelated dirty state |
 | Continuous run stops too early | Use recursive task discovery and continue until no safe useful candidates remain or the user directs stop |
 | User cannot tell why work mattered | Maintain `OUTCOMES.md` and print checkpoint summaries from it |
