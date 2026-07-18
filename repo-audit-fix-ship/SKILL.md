@@ -31,11 +31,11 @@ Load and follow the relevant specialized skill when its trigger applies:
 | AI-shaped backend/general code audit or cleanup | `audit-ai-code` |
 | Frontend/UI/design-system audit or cleanup | `audit-ai-frontend` |
 | Documentation, Markdown, prose, citation, or AI-writing cleanup | `audit-ai-writing` |
-| Bug, failing test, build failure, or unexpected behavior | `systematic-debugging` |
-| Feature/bugfix implementation after diagnosis | `test-driven-development` |
-| Before claiming completion or committing | `verification-before-completion` |
+| Bug, failing test, build failure, or unexpected behavior | Root-cause diagnosis with a minimal reproduction |
+| Feature/bugfix implementation after diagnosis | Behavior-first implementation with regression tests |
+| Before claiming completion or committing | Explicit local verification with observed evidence |
 | Staging and semantic commit grouping | `gh-commit` |
-| Branch merge/PR/cleanup decision after implementation | `finishing-a-development-branch` |
+| Branch merge/PR/cleanup decision after implementation | Shared Git delivery and hard-stop rules |
 
 ## Workflow
 
@@ -59,8 +59,9 @@ Load and follow the relevant specialized skill when its trigger applies:
 - Record findings with file paths and concrete impact.
 
 4. Fix issues pragmatically:
-- Use `systematic-debugging` before fixing failures or unexpected behavior.
-- Use `test-driven-development` for meaningful behavior changes unless the user explicitly approved a non-TDD exception.
+- Reproduce and diagnose failures before changing behavior.
+- Capture a failing test or reproducible characterization before meaningful
+  behavior changes when practical.
 - Apply minimal, targeted code changes that resolve root causes.
 - Add or update tests for each meaningful bug fix.
 - Keep backward compatibility unless user requested breaking changes.
@@ -72,7 +73,8 @@ Load and follow the relevant specialized skill when its trigger applies:
 - If source/config/workflow changed but docs do not need updates, report why instead of touching docs just to satisfy a checklist.
 
 6. Verify end-to-end:
-- Use `verification-before-completion` before making success claims, committing, pushing, or opening a PR.
+- Run the strongest relevant local verification and inspect its output before
+  making success claims, committing, pushing, or opening a PR.
 - Re-run lint/typecheck/tests and any relevant build command.
 - Re-check git diff for accidental changes, debug logs, generated artifacts, misplaced files, or secrets.
 - Summarize what was fixed, what was not fixed, and residual risk.
