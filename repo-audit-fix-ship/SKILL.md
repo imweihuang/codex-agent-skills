@@ -61,7 +61,8 @@ Load and follow the relevant specialized skill when its trigger applies:
 4. Fix issues pragmatically:
 - Reproduce and diagnose failures before changing behavior.
 - Capture a failing test or reproducible characterization before meaningful
-  behavior changes when practical.
+  behavior changes when practical; when skipped as impractical, record the
+  reason in the run report.
 - Apply minimal, targeted code changes that resolve root causes.
 - Add or update tests for each meaningful bug fix.
 - Keep backward compatibility unless user requested breaking changes.
