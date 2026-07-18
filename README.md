@@ -65,15 +65,22 @@ The `peer-review` skill is the most tool-heavy skill in this repository. It
 builds a safe context bundle, runs independent reviewers, and asks Codex to
 validate the findings instead of accepting model output blindly.
 
-Default reviewer roster:
+Peer review is manual-only: no model runs unless the user explicitly requests
+external review. An authorized review uses Claude only unless the user names
+another reviewer, and there is no automatic fallback or model escalation.
 
-| Reviewer | CLI | Default model | Default effort |
+Claude routing is selected with `--review-class`:
+
+| Review class | Use for | Claude model | Effort |
 | --- | --- | --- | --- |
-| Claude | `claude` | `opus` alias, documented in the skill as Opus 4.8 | `xhigh` for gate and critical reviews |
-| Codex/GPT | `codex` | `gpt-5.5` | `xhigh` for gate and critical reviews |
-| Grok Build | `grok` | `grok-composer-2.5-fast` | `max`; `reasoning_effort=high` |
+| `routine` | Straightforward or mechanical checks | Opus | `high` |
+| `judgment` | Architecture, prioritization, or non-trivial judgment | Fable 5 | `high` |
+| `load-bearing` | User-requested gates, critical reviews, or consequential decisions | Fable 5 | `xhigh` |
 
-Gemini is supported by the runner but is opt-in.
+Humans do not need to specify a review class. The runner's `auto` mode
+fails closed to `judgment` for planning and `load-bearing` for gate or
+critical reviews. Codex/GPT (`gpt-5.5`), Grok Build (`grok-4.5` with
+`reasoning_effort=high`), and Gemini remain explicit opt-ins.
 
 Humans do not need to specify the review intensity in normal skill use. The
 agent should infer it from the task and report what it selected. The runner also
@@ -91,7 +98,11 @@ review scope:
 | Tool policy | Applies to | Meaning |
 | --- | --- | --- |
 | `context-only` | `strict`, `broad-repo`, and fallback `auto` | Curated context only; no web, no local repo browsing, no write/action tools. |
-| `web-allowed` | `strategy-open` and `web-research` | Web/source research only where the reviewer runtime exposes a verified safe toggle; no local repo browsing and no write/action tools. |
+| `web-allowed` | `strategy-open` and `web-research` | Claude gets only `WebSearch` and `WebFetch` by default; no local repo browsing or write/action tools. |
+
+Supplied context and web results are untrusted data. In `web-allowed` scope,
+anti-exfiltration is prompt-enforced rather than a mechanical confidentiality
+boundary, so sensitive review context stays in `context-only` scope.
 
 Preflight local reviewer tools:
 
@@ -105,6 +116,7 @@ Run a targeted review:
 python3 peer-review/scripts/run_peer_review.py \
   --mode "Diff Critique" \
   --review-scope strict \
+  --review-class load-bearing \
   --intensity gate \
   --milestone "current milestone" \
   --focus "correctness bugs and behavioral regressions" \
